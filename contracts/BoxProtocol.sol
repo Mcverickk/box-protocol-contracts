@@ -4,7 +4,7 @@ pragma solidity ^0.8.4;
 import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract Box is ERC1155 {
+contract Box is ERC1155, Ownable {
 
     struct Token {
         string name;
@@ -26,7 +26,7 @@ contract Box is ERC1155 {
     function sell() external {
     }
     
-    function createBox(string memory boxName, Token[] memory tokens) external returns(uint boxId){
+    function createBox(string memory boxName, Token[] memory tokens) external onlyOwner returns(uint boxId){
         boxIdtoBoxName[boxNumber] = boxName;
         uint l = tokens.length;
         Token memory token;
