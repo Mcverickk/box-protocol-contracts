@@ -2,8 +2,10 @@
 pragma solidity ^0.8.4;
 pragma abicoder v2;
 
-import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
+import "@openzeppelin/contracts/token/ERC1155/extensions/ERC1155Supply.sol";
+
 import '@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol';
 import '@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol';
 
@@ -12,29 +14,36 @@ abstract contract WETHinterface {
     function withdraw(uint wad) public virtual;
 }
 
-contract Box is ERC1155, Ownable {
+
+contract Box is ERC1155, ERC1155Supply, Ownable {
 
     ISwapRouter public immutable swapRouter;
     WETHinterface wethtoken = WETHinterface(0xB4FBF271143F4FBf7B91A5ded31805e42b2208d6);
 
     uint24 public constant poolFee = 3000;
+    uint256 DECIMAL = 2;
 
     struct Token {
         string name;
         uint256 percentage;
     }
 
+    uint ethPrice = 1500;
+    uint uniPrice = 600;
+
 
     mapping(uint256 => Token[]) boxDistribution;
     mapping(uint256 => string) boxIdtoBoxName;
     mapping(uint256 => mapping(address => uint256)) public depositBalance;
     mapping(uint256 => mapping(address => mapping(address=> uint))) public tokensBalance;
+    mapping(uint256 => mapping(address => uint256)) public boxBalance;
     mapping(string => address) tokenAddress;
     
 
     uint256 boxNumber;
 
 // createBox param [["ETH",50],["WETH",20],["UNI",30]]
+// createBox param [["WETH",20],["UNI",80]]
 
 
     constructor() ERC1155(" ")  {
@@ -45,30 +54,36 @@ contract Box is ERC1155, Ownable {
         tokenAddress["ETH"] = address(0);
     }
 
-    function buy(uint boxId) external payable{
-        // wethtoken.deposit{value: msg.value}();
-        depositBalance[boxId][msg.sender] += msg.value;
-        uint tokensInBox = getNumberOfTokensInBox(boxId);
+    function buy(uint boxId) external payable returns(uint boxTokenMinted){
         uint amount = msg.value;
+        depositBalance[boxId][msg.sender] += amount;
+        uint tokenMintAmount = _getBoxTokenMintAmount(boxId, amount);
+
+        uint tokensInBox = getNumberOfTokensInBox(boxId);
         for(uint i = 0 ; i < tokensInBox ; i++){
             Token memory token = boxDistribution[boxId][i];
 
             if(keccak256(abi.encodePacked(token.name)) == keccak256(abi.encodePacked('ETH'))){
                 uint ethAmount = amount * token.percentage / 100;
                 tokensBalance[boxId][msg.sender][tokenAddress[token.name]] += ethAmount;
+                boxBalance[boxId][tokenAddress[token.name]] += ethAmount;
             }
             else if(keccak256(abi.encodePacked(token.name)) == keccak256(abi.encodePacked('WETH'))){
                 uint tokenAmount = amount * token.percentage / 100;
                 wethtoken.deposit{value: tokenAmount}();
                 tokensBalance[boxId][msg.sender][tokenAddress[token.name]] += tokenAmount;
+                boxBalance[boxId][tokenAddress[token.name]] += tokenAmount;
             }
             else if(keccak256(abi.encodePacked(token.name)) != keccak256(abi.encodePacked('ETH'))){
                 uint swapAmount = amount * token.percentage / 100;
                 wethtoken.deposit{value: swapAmount}();
                 uint tokenAmount = _swapTokens(swapAmount, tokenAddress["WETH"], tokenAddress[token.name]);
                 tokensBalance[boxId][msg.sender][tokenAddress[token.name]] += tokenAmount;
+                boxBalance[boxId][tokenAddress[token.name]] += tokenAmount;
             }
         }
+        _mintBoxToken(boxId, tokenMintAmount);
+        return(tokenMintAmount);
     }
 
     function sell(uint boxId) external {
@@ -131,22 +146,54 @@ contract Box is ERC1155, Ownable {
         return (boxDistribution[boxId][tokenNumber]);
     }
 
-    function getBoxTokenPrice() public view {
+    function getBoxTVL(uint boxId) public view returns(uint) {
+        uint tokensInBox = getNumberOfTokensInBox(boxId);
+        uint totalValueLocked;
+        for(uint i = 0 ; i < tokensInBox ; i++){
+            Token memory token = boxDistribution[boxId][i];
 
+            if((keccak256(abi.encodePacked(token.name)) == keccak256(abi.encodePacked('ETH'))) || (keccak256(abi.encodePacked(token.name)) == keccak256(abi.encodePacked('WETH')))){
+                uint ethAmount = boxBalance[boxId][tokenAddress[token.name]];
+                uint valueInUSD = ethAmount* ethPrice;
+                totalValueLocked += valueInUSD;
+
+            }
+            else if(keccak256(abi.encodePacked(token.name)) != keccak256(abi.encodePacked('ETH'))){
+                uint tokenAmount = boxBalance[boxId][tokenAddress[token.name]];
+                uint valueInUSD = tokenAmount* uniPrice;
+                totalValueLocked += valueInUSD;
+            }
+        }
+        return totalValueLocked;
+    }
+
+    function getBoxTokenPrice(uint boxId) public view returns(uint)  {
+        uint totalValueLocked = getBoxTVL(boxId);
+        uint tokenSupply = totalSupply(boxId);
+        if(tokenSupply == 0){
+            return(10**18);
+        }else{
+            return(totalValueLocked * (10**DECIMAL) / tokenSupply);
+        }
+    }
+
+    function _getBoxTokenMintAmount(uint boxId, uint amountInETH) internal view returns(uint) {
+        uint amountInUSD = amountInETH * ethPrice;
+        uint boxTokenPrice = getBoxTokenPrice(boxId);
+        return(amountInUSD * (10**DECIMAL) / boxTokenPrice);
     }
 
 
-    function _mintBoxToken() internal {
-        
-    }
-
-    function _burnBoxToken() internal {
-        
-    }
-
-    function _getBoxTokenMintAmount() internal view {
+    function _mintBoxToken(uint boxId, uint mintAmount) internal {
+        _mint(msg.sender, boxId, mintAmount, "");
 
     }
+
+    function _burnBoxToken(uint boxId, uint mintAmount) internal {
+        _burn(msg.sender, boxId, mintAmount);
+    }
+
+    
 
     function _swapTokens(uint256 amountIn, address tokenIn, address tokenOut) internal returns (uint256 amountOut) {
         TransferHelper.safeApprove(tokenIn, address(swapRouter), amountIn);
@@ -168,4 +215,13 @@ contract Box is ERC1155, Ownable {
     receive() external payable{}
     fallback() external payable{}
 
+    function _beforeTokenTransfer(address operator, address from, address to, uint256[] memory ids, uint256[] memory amounts, bytes memory data)
+        internal
+        override(ERC1155, ERC1155Supply)
+    {
+        super._beforeTokenTransfer(operator, from, to, ids, amounts, data);
+    }
+
 }
+
+
