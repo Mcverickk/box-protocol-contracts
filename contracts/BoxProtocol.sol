@@ -15,7 +15,7 @@ abstract contract WETHinterface {
 }
 
 
-contract Box is ERC1155, ERC1155Supply {
+contract BoxProtocol is ERC1155, ERC1155Supply {
 
     ISwapRouter public immutable swapRouter;
     WETHinterface wethtoken = WETHinterface(0xB4FBF271143F4FBf7B91A5ded31805e42b2208d6);
