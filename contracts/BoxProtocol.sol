@@ -15,7 +15,7 @@ abstract contract WETHinterface {
 }
 
 
-contract Box is ERC1155, ERC1155Supply, Ownable {
+contract Box is ERC1155, ERC1155Supply {
 
     ISwapRouter public immutable swapRouter;
     WETHinterface wethtoken = WETHinterface(0xB4FBF271143F4FBf7B91A5ded31805e42b2208d6);
@@ -44,6 +44,7 @@ contract Box is ERC1155, ERC1155Supply, Ownable {
 
 // createBox param [["ETH",50],["WETH",20],["UNI",30]]
 // createBox param [["WETH",20],["UNI",80]]
+// createBox param [["ETH",20],["WETH",80]]
 
 
     constructor() ERC1155(" ")  {
@@ -86,8 +87,10 @@ contract Box is ERC1155, ERC1155Supply, Ownable {
         return(tokenMintAmount);
     }
 
-    function sell(uint boxId) external {
-        // wethtoken.withdraw(amountOut);
+    function sell(uint boxId, uint tokenSellAmount) external {
+        uint userBalance = balanceOf(msg.sender, boxId);
+        uint sellRatio = tokenSellAmount * 100 / userBalance;
+
         uint tokensInBox = getNumberOfTokensInBox(boxId);
         uint amount;
         for(uint i = 0 ; i < tokensInBox ; i++){
@@ -95,31 +98,37 @@ contract Box is ERC1155, ERC1155Supply, Ownable {
 
             if(keccak256(abi.encodePacked(token.name)) == keccak256(abi.encodePacked('ETH'))){
                 uint ethAmount = tokensBalance[boxId][msg.sender][tokenAddress[token.name]];
-                tokensBalance[boxId][msg.sender][tokenAddress[token.name]] -= ethAmount;
-                amount += ethAmount;
-
+                uint sellAmount = ethAmount * sellRatio / 100;
+                tokensBalance[boxId][msg.sender][tokenAddress[token.name]] -= sellAmount;
+                boxBalance[boxId][tokenAddress[token.name]] -= sellAmount;
+                amount += sellAmount;
             }
             else if(keccak256(abi.encodePacked(token.name)) == keccak256(abi.encodePacked('WETH'))){
                 uint wethAmount = tokensBalance[boxId][msg.sender][tokenAddress[token.name]];
-                tokensBalance[boxId][msg.sender][tokenAddress[token.name]] -= wethAmount;
-                wethtoken.withdraw(wethAmount);
-                amount += wethAmount;
+                uint sellAmount = wethAmount * sellRatio / 100;
+                tokensBalance[boxId][msg.sender][tokenAddress[token.name]] -= sellAmount;
+                boxBalance[boxId][tokenAddress[token.name]] -= sellAmount;
+                wethtoken.withdraw(sellAmount);
+                amount += sellAmount;
             }
             else if(keccak256(abi.encodePacked(token.name)) != keccak256(abi.encodePacked('ETH'))){
                 uint tokenAmount = tokensBalance[boxId][msg.sender][tokenAddress[token.name]];
-                tokensBalance[boxId][msg.sender][tokenAddress[token.name]] -= tokenAmount;
-                uint wethAmount = _swapTokens(tokenAmount, tokenAddress[token.name], tokenAddress["WETH"]);
+                uint sellAmount = tokenAmount * sellRatio / 100;
+                tokensBalance[boxId][msg.sender][tokenAddress[token.name]] -= sellAmount;
+                boxBalance[boxId][tokenAddress[token.name]] -= sellAmount;
+                uint wethAmount = _swapTokens(sellAmount, tokenAddress[token.name], tokenAddress["WETH"]);
                 wethtoken.withdraw(wethAmount);
                 amount += wethAmount;
             }
         }
 
+        _burnBoxToken(boxId, tokenSellAmount);
         (bool sent,) = msg.sender.call{value : amount}("");
         require(sent);
     }
     
 
-    function createBox(string memory boxName, Token[] memory tokens) external onlyOwner returns(uint boxId){
+    function createBox(string memory boxName, Token[] memory tokens) external returns(uint boxId){
         boxIdtoBoxName[boxNumber] = boxName;
         uint l = tokens.length;
         Token memory token;
