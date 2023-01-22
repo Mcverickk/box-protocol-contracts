@@ -83,7 +83,7 @@ contract Box is ERC1155, ERC1155Supply {
                 boxBalance[boxId][tokenAddress[token.name]] += tokenAmount;
             }
         }
-        _mintBoxToken(boxId, tokenMintAmount);
+        _mint(msg.sender, boxId, tokenMintAmount, "");
         return(tokenMintAmount);
     }
 
@@ -122,7 +122,7 @@ contract Box is ERC1155, ERC1155Supply {
             }
         }
 
-        _burnBoxToken(boxId, tokenSellAmount);
+        _burn(msg.sender, boxId, tokenSellAmount);
         (bool sent,) = msg.sender.call{value : amount}("");
         require(sent);
     }
@@ -192,18 +192,6 @@ contract Box is ERC1155, ERC1155Supply {
         return(amountInUSD * (10**DECIMAL) / boxTokenPrice);
     }
 
-
-    function _mintBoxToken(uint boxId, uint mintAmount) internal {
-        _mint(msg.sender, boxId, mintAmount, "");
-
-    }
-
-    function _burnBoxToken(uint boxId, uint mintAmount) internal {
-        _burn(msg.sender, boxId, mintAmount);
-    }
-
-    
-
     function _swapTokens(uint256 amountIn, address tokenIn, address tokenOut) internal returns (uint256 amountOut) {
         TransferHelper.safeApprove(tokenIn, address(swapRouter), amountIn);
 
@@ -232,5 +220,3 @@ contract Box is ERC1155, ERC1155Supply {
     }
 
 }
-
-
