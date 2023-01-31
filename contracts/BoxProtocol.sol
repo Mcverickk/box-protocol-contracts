@@ -86,7 +86,7 @@ contract BoxProtocol is ERC1155, ERC1155Supply {
     function sell(uint boxId, uint256 tokenSellAmount) external {
         // uint userBalance = balanceOf(msg.sender, boxId);
         uint256 tokenTokenSupply = totalSupply(boxId);
-        uint256 sellRatio = tokenSellAmount * 100 / tokenTokenSupply;
+        uint256 sellRatio = tokenSellAmount * 100 * 1000 / tokenTokenSupply;
 
         uint256 tokensInBox = getNumberOfTokensInBox(boxId);
         uint256 amount;
@@ -94,20 +94,20 @@ contract BoxProtocol is ERC1155, ERC1155Supply {
             Token memory token = boxDistribution[boxId][i];
             if(keccak256(abi.encodePacked(token.name)) == keccak256(abi.encodePacked('ETH'))){
                 uint ethAmount = boxBalance[boxId][tokenAddress[token.name]];
-                uint sellAmount = ethAmount * sellRatio / 100;
+                uint sellAmount = ethAmount * sellRatio / 100000;
                 boxBalance[boxId][tokenAddress[token.name]] -= sellAmount;
                 amount += sellAmount;
             }
             else if(keccak256(abi.encodePacked(token.name)) == keccak256(abi.encodePacked('WETH'))){
                 uint wethAmount = boxBalance[boxId][tokenAddress[token.name]];
-                uint sellAmount = wethAmount * sellRatio / 100;
+                uint sellAmount = wethAmount * sellRatio / 100000;
                 boxBalance[boxId][tokenAddress[token.name]] -= sellAmount;
                 wethtoken.withdraw(sellAmount);
                 amount += sellAmount;
             }
             else if(keccak256(abi.encodePacked(token.name)) != keccak256(abi.encodePacked('ETH'))){
                 uint tokenAmount = boxBalance[boxId][tokenAddress[token.name]];
-                uint sellAmount = tokenAmount * sellRatio / 100;
+                uint sellAmount = tokenAmount * sellRatio / 100000;
                 boxBalance[boxId][tokenAddress[token.name]] -= sellAmount;
                 uint wethAmount = _swapTokens(sellAmount, tokenAddress[token.name], tokenAddress["WETH"]);
                 wethtoken.withdraw(wethAmount);
