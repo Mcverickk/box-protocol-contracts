@@ -21,21 +21,18 @@ contract BoxProtocol is ERC1155, ERC1155Supply {
     WETHinterface wethtoken = WETHinterface(0xB4FBF271143F4FBf7B91A5ded31805e42b2208d6);
 
     uint24 public constant poolFee = 3000;
-    uint256 DECIMAL = 2;
+    uint8 DECIMAL = 2;
 
     struct Token {
         string name;
-        uint256 percentage;
+        uint8 percentage;
     }
 
     uint ethPrice = 1500;
-    uint uniPrice = 600;
+    uint uniPrice = 6;
 
 
     mapping(uint256 => Token[]) boxDistribution;
-    mapping(uint256 => string) boxIdtoBoxName;
-    mapping(uint256 => mapping(address => uint256)) public depositBalance;
-    mapping(uint256 => mapping(address => mapping(address=> uint))) public tokensBalance;
     mapping(uint256 => mapping(address => uint256)) public boxBalance;
     mapping(string => address) tokenAddress;
     
@@ -55,31 +52,30 @@ contract BoxProtocol is ERC1155, ERC1155Supply {
         tokenAddress["ETH"] = address(0);
     }
 
-    function buy(uint boxId) external payable returns(uint boxTokenMinted){
-        uint amount = msg.value;
-        depositBalance[boxId][msg.sender] += amount;
-        uint tokenMintAmount = _getBoxTokenMintAmount(boxId, amount);
+    function buy(uint boxId) external payable returns(uint256 boxTokenMinted){
+        uint256 amount = msg.value;
+        uint256 tokenMintAmount = _getBoxTokenMintAmount(boxId, amount);
 
-        uint tokensInBox = getNumberOfTokensInBox(boxId);
+        uint256 tokensInBox = getNumberOfTokensInBox(boxId);
         for(uint i = 0 ; i < tokensInBox ; i++){
             Token memory token = boxDistribution[boxId][i];
 
             if(keccak256(abi.encodePacked(token.name)) == keccak256(abi.encodePacked('ETH'))){
                 uint ethAmount = amount * token.percentage / 100;
-                tokensBalance[boxId][msg.sender][tokenAddress[token.name]] += ethAmount;
+                // tokensBalance[boxId][msg.sender][tokenAddress[token.name]] += ethAmount;
                 boxBalance[boxId][tokenAddress[token.name]] += ethAmount;
             }
             else if(keccak256(abi.encodePacked(token.name)) == keccak256(abi.encodePacked('WETH'))){
                 uint tokenAmount = amount * token.percentage / 100;
                 wethtoken.deposit{value: tokenAmount}();
-                tokensBalance[boxId][msg.sender][tokenAddress[token.name]] += tokenAmount;
+                // tokensBalance[boxId][msg.sender][tokenAddress[token.name]] += tokenAmount;
                 boxBalance[boxId][tokenAddress[token.name]] += tokenAmount;
             }
             else if(keccak256(abi.encodePacked(token.name)) != keccak256(abi.encodePacked('ETH'))){
                 uint swapAmount = amount * token.percentage / 100;
                 wethtoken.deposit{value: swapAmount}();
                 uint tokenAmount = _swapTokens(swapAmount, tokenAddress["WETH"], tokenAddress[token.name]);
-                tokensBalance[boxId][msg.sender][tokenAddress[token.name]] += tokenAmount;
+                // tokensBalance[boxId][msg.sender][tokenAddress[token.name]] += tokenAmount;
                 boxBalance[boxId][tokenAddress[token.name]] += tokenAmount;
             }
         }
@@ -87,34 +83,31 @@ contract BoxProtocol is ERC1155, ERC1155Supply {
         return(tokenMintAmount);
     }
 
-    function sell(uint boxId, uint tokenSellAmount) external {
-        uint userBalance = balanceOf(msg.sender, boxId);
-        uint sellRatio = tokenSellAmount * 100 / userBalance;
+    function sell(uint boxId, uint256 tokenSellAmount) external {
+        // uint userBalance = balanceOf(msg.sender, boxId);
+        uint256 tokenTokenSupply = totalSupply(boxId);
+        uint256 sellRatio = tokenSellAmount * 100 / tokenTokenSupply;
 
-        uint tokensInBox = getNumberOfTokensInBox(boxId);
-        uint amount;
+        uint256 tokensInBox = getNumberOfTokensInBox(boxId);
+        uint256 amount;
         for(uint i = 0 ; i < tokensInBox ; i++){
             Token memory token = boxDistribution[boxId][i];
-
             if(keccak256(abi.encodePacked(token.name)) == keccak256(abi.encodePacked('ETH'))){
-                uint ethAmount = tokensBalance[boxId][msg.sender][tokenAddress[token.name]];
+                uint ethAmount = boxBalance[boxId][tokenAddress[token.name]];
                 uint sellAmount = ethAmount * sellRatio / 100;
-                tokensBalance[boxId][msg.sender][tokenAddress[token.name]] -= sellAmount;
                 boxBalance[boxId][tokenAddress[token.name]] -= sellAmount;
                 amount += sellAmount;
             }
             else if(keccak256(abi.encodePacked(token.name)) == keccak256(abi.encodePacked('WETH'))){
-                uint wethAmount = tokensBalance[boxId][msg.sender][tokenAddress[token.name]];
+                uint wethAmount = boxBalance[boxId][tokenAddress[token.name]];
                 uint sellAmount = wethAmount * sellRatio / 100;
-                tokensBalance[boxId][msg.sender][tokenAddress[token.name]] -= sellAmount;
                 boxBalance[boxId][tokenAddress[token.name]] -= sellAmount;
                 wethtoken.withdraw(sellAmount);
                 amount += sellAmount;
             }
             else if(keccak256(abi.encodePacked(token.name)) != keccak256(abi.encodePacked('ETH'))){
-                uint tokenAmount = tokensBalance[boxId][msg.sender][tokenAddress[token.name]];
+                uint tokenAmount = boxBalance[boxId][tokenAddress[token.name]];
                 uint sellAmount = tokenAmount * sellRatio / 100;
-                tokensBalance[boxId][msg.sender][tokenAddress[token.name]] -= sellAmount;
                 boxBalance[boxId][tokenAddress[token.name]] -= sellAmount;
                 uint wethAmount = _swapTokens(sellAmount, tokenAddress[token.name], tokenAddress["WETH"]);
                 wethtoken.withdraw(wethAmount);
@@ -128,8 +121,7 @@ contract BoxProtocol is ERC1155, ERC1155Supply {
     }
     
 
-    function createBox(string memory boxName, Token[] memory tokens) external returns(uint boxId){
-        boxIdtoBoxName[boxNumber] = boxName;
+    function createBox(Token[] memory tokens) external returns(uint boxId){
         uint l = tokens.length;
         Token memory token;
 
@@ -140,10 +132,6 @@ contract BoxProtocol is ERC1155, ERC1155Supply {
         }
         boxNumber++;
         return(boxNumber - 1);
-    }
-
-    function getBoxName(uint boxId) external view returns(string memory) {
-        return(boxIdtoBoxName[boxId]);
     }
     
 
