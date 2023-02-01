@@ -5,6 +5,10 @@
 This is a smart contract for [Box Protocol](https://boxprotocol.netlify.app/) - a platform for buying and selling tokenized crypto portfolios. It is an easy, self custodial way to invest in boxes representing the hottest ideas and sectors in Web3!.
 The contract is currently deployed on [Goerli Testnet](https://goerli.etherscan.io/address/0xD956f040A7aA9CEcf4225C0F60221A4a89335d2f#code)
 
+## Frontend
+
+The frontend code can be accessed [here](https://github.com/Mcverickk/box-protocol-frontend).
+
 ## Variables
 
 - `ISwapRouter` : A public, immutable contract reference to the ISwapRouter contract. Used to call the swapTokens function to swap tokens.
