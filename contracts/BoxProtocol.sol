@@ -36,6 +36,8 @@ contract BoxProtocol is ERC1155, ERC1155Supply, PriceFeed {
     mapping(uint256 => Token[]) boxDistribution;
     mapping(uint256 => mapping(address => uint256)) public boxBalance;
     mapping(string => address) tokenAddress;
+    mapping(string => address) tokenPriceFeed;
+    address ETHPriceFeed;
     
 
     uint256 boxNumber;
@@ -54,19 +56,21 @@ contract BoxProtocol is ERC1155, ERC1155Supply, PriceFeed {
       _;
    }
 
-    constructor() ERC1155(" ") PriceFeed(0x368A8C0a75fD707e4f7bF15DD1aA25ED554fE22c)   {
+    constructor() ERC1155(" ") PriceFeed()   {
         owner = msg.sender;
         swapRouter = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
+        ETHPriceFeed = 0xD4a33860578De61DBAbDc8BFdb98FD742fA7028e;
 
-        addToken("UNI", 0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984);
-        addToken("WETH", 0xB4FBF271143F4FBf7B91A5ded31805e42b2208d6);
-        addToken("ETH", address(0));
+        addToken("ETH", address(0), ETHPriceFeed);
+        addToken("WETH", 0xB4FBF271143F4FBf7B91A5ded31805e42b2208d6, ETHPriceFeed);
+        addToken("UNI", 0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984, ETHPriceFeed);
 
         wethtoken = WETHinterface(tokenAddress["WETH"]);
     }
 
-    function addToken(string memory _tokenSymbol, address _tokenAddress) public onlyOwner {
+    function addToken(string memory _tokenSymbol, address _tokenAddress, address _tokenPriceFeed) public onlyOwner {
         tokenAddress[_tokenSymbol] = _tokenAddress;
+        tokenPriceFeed[_tokenSymbol] = _tokenPriceFeed;
     }
 
     function buy(uint boxId) external payable checkBoxID(boxId) returns(uint256 boxTokenMinted){
@@ -172,14 +176,14 @@ contract BoxProtocol is ERC1155, ERC1155Supply, PriceFeed {
 
             if((keccak256(abi.encodePacked(token.name)) == keccak256(abi.encodePacked('ETH'))) || (keccak256(abi.encodePacked(token.name)) == keccak256(abi.encodePacked('WETH')))){
                 uint ethAmount = boxBalance[boxId][tokenAddress[token.name]];
-                int256 ethPrice = getETHprice(); //Change required!!!!!!!!!!
+                int256 ethPrice = getLatestPrice(ETHPriceFeed);
                 uint valueInUSD = ethAmount* uint(ethPrice)/(10**18);
                 totalValueLocked += valueInUSD;
 
             }
             else {
                 uint tokenAmount = boxBalance[boxId][tokenAddress[token.name]];
-                int256 tokenPrice = getUNIprice(); //Change required!!!!!!!!!!
+                int256 tokenPrice = getLatestPrice(tokenPriceFeed[token.name]);
                 uint valueInUSD = tokenAmount* uint(tokenPrice)/(10**18);
                 totalValueLocked += valueInUSD;
             }
@@ -198,7 +202,7 @@ contract BoxProtocol is ERC1155, ERC1155Supply, PriceFeed {
     }
 
     function _getBoxTokenMintAmount(uint boxId, uint amountInETH) internal view checkBoxID(boxId) returns(uint) {
-        int256 ethPrice = getETHprice(); //Change required!!!!!!!!!!
+        int256 ethPrice = getLatestPrice(ETHPriceFeed);
         uint amountInUSD = amountInETH * uint(ethPrice)/(10**18);
         uint boxTokenPrice = getBoxTokenPrice(boxId);
         return(amountInUSD * (10**DECIMAL) / boxTokenPrice);
