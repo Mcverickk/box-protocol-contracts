@@ -33,8 +33,8 @@ contract BoxProtocol is ERC1155, ERC1155Supply, PriceFeed {
         uint8 percentage;
     }
 
-    mapping(uint256 => Token[]) boxDistribution;
-    mapping(uint256 => mapping(address => uint256)) public boxBalance;
+    mapping(uint => Token[]) boxDistribution;
+    mapping(uint => mapping(address => uint256)) public boxBalance;
     mapping(string => address) tokenAddress;
     mapping(string => address) tokenPriceFeed;
     address ETHPriceFeed;
@@ -45,6 +45,8 @@ contract BoxProtocol is ERC1155, ERC1155Supply, PriceFeed {
 // createBox param [["ETH",50],["WETH",20],["UNI",30]]
 // createBox param [["WETH",20],["UNI",80]]
 // createBox param [["ETH",20],["WETH",80]]
+
+// createBox param [["USDC",30],["USDT",50], ["BUSD",20]]
 
     modifier checkBoxID(uint boxId) {
       require(boxId < boxNumber, "Invalid BoxID parameter.");
@@ -59,11 +61,14 @@ contract BoxProtocol is ERC1155, ERC1155Supply, PriceFeed {
     constructor() ERC1155(" ") PriceFeed()   {
         owner = msg.sender;
         swapRouter = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
-        ETHPriceFeed = 0xD4a33860578De61DBAbDc8BFdb98FD742fA7028e;
+        ETHPriceFeed = 0xAB594600376Ec9fD91F8e885dADF0CE036862dE0;
 
         addToken("ETH", address(0), ETHPriceFeed);
-        addToken("WETH", 0xB4FBF271143F4FBf7B91A5ded31805e42b2208d6, ETHPriceFeed);
-        addToken("UNI", 0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984, ETHPriceFeed);
+        addToken("WETH", 0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270, ETHPriceFeed);
+
+        addToken("USDC", 0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174, 0xfE4A8cc5b5B2366C1B58Bea3858e81843581b2F7);
+        addToken("USDT", 0xc2132D05D31c914a87C6611C10748AEb04B58e8F, 0x0A6513e40db6EB1b165753AD52E80663aeA50545);
+        addToken("BUSD", 0xdAb529f40E671A1D4bF91361c21bf9f0C9712ab7, 0xE0dC07D5ED74741CeeDA61284eE56a2A0f7A4Cc9);
 
         wethtoken = WETHinterface(tokenAddress["WETH"]);
     }
@@ -146,6 +151,7 @@ contract BoxProtocol is ERC1155, ERC1155Supply, PriceFeed {
     function createBox(Token[] memory tokens) external onlyOwner returns(uint boxId){
         uint l = tokens.length;
         Token memory token;
+        // uint8 totalPercent;
 
         for(uint i = 0; i<l ; i++ ){
             if(keccak256(abi.encodePacked(tokens[i].name)) != keccak256(abi.encodePacked('ETH'))){
@@ -153,9 +159,11 @@ contract BoxProtocol is ERC1155, ERC1155Supply, PriceFeed {
             }
             token.name = tokens[i].name;
             token.percentage = tokens[i].percentage;
+            // totalPercent += token.percentage;
             boxDistribution[boxNumber].push(token);
         }
         boxNumber++;
+        // require(totalPercent == 100, "Invalid Percentage");
         return(boxNumber - 1);
     }
     
@@ -177,14 +185,14 @@ contract BoxProtocol is ERC1155, ERC1155Supply, PriceFeed {
             if((keccak256(abi.encodePacked(token.name)) == keccak256(abi.encodePacked('ETH'))) || (keccak256(abi.encodePacked(token.name)) == keccak256(abi.encodePacked('WETH')))){
                 uint ethAmount = boxBalance[boxId][tokenAddress[token.name]];
                 int256 ethPrice = getLatestPrice(ETHPriceFeed);
-                uint valueInUSD = ethAmount* uint(ethPrice)/(10**18);
+                uint valueInUSD = ethAmount* uint(ethPrice)/(10**8);
                 totalValueLocked += valueInUSD;
 
             }
             else {
                 uint tokenAmount = boxBalance[boxId][tokenAddress[token.name]];
                 int256 tokenPrice = getLatestPrice(tokenPriceFeed[token.name]);
-                uint valueInUSD = tokenAmount* uint(tokenPrice)/(10**18);
+                uint valueInUSD = tokenAmount* uint(tokenPrice)/(10**8);
                 totalValueLocked += valueInUSD;
             }
         }
@@ -203,7 +211,7 @@ contract BoxProtocol is ERC1155, ERC1155Supply, PriceFeed {
 
     function _getBoxTokenMintAmount(uint boxId, uint amountInETH) internal view checkBoxID(boxId) returns(uint) {
         int256 ethPrice = getLatestPrice(ETHPriceFeed);
-        uint amountInUSD = amountInETH * uint(ethPrice)/(10**18);
+        uint amountInUSD = amountInETH * uint(ethPrice)/(10**8);
         uint boxTokenPrice = getBoxTokenPrice(boxId);
         return(amountInUSD * (10**DECIMAL) / boxTokenPrice);
     }
