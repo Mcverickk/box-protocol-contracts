@@ -15,6 +15,10 @@ abstract contract WMATICinterface {
     function withdraw(uint wad) public virtual;
 }
 
+interface ERC20I{
+    function decimals() external view returns (uint8);
+}
+
 
 contract BoxProtocol is ERC1155, ERC1155Supply, PriceFeed {
 
@@ -33,21 +37,22 @@ contract BoxProtocol is ERC1155, ERC1155Supply, PriceFeed {
         uint8 percentage;
     }
 
-    mapping(uint256 => Token[]) boxDistribution;
-    mapping(uint256 => mapping(address => uint256)) public boxBalance;
+    mapping(uint24 => Token[]) boxDistribution;
+    mapping(uint24 => mapping(address => uint256)) public boxBalance;
     mapping(string => address) tokenAddress;
     mapping(string => address) tokenPriceFeed;
     address MATICPriceFeed;
     
 
-    uint256 boxNumber;
+    uint24 boxNumber;
 
-// createBox param [["MATIC",50],["WMATIC",20],["UNI",30]]
-// createBox param [["WMATIC",20],["UNI",80]]
-// createBox param [["MATIC",20],["WMATIC",80]]
-//addToken("WMATIC", 0x9c3C9283D3e44854697Cd22D3Faa240Cfb032889, MATICPriceFeed);
+// [["WMATIC","20"],["USDT","30"],["USDC","50"]]
+// [["USDT","50"],["USDC","50"]]
 
-    modifier checkBoxID(uint boxId) {
+// ("USDC", 0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174, 0xfE4A8cc5b5B2366C1B58Bea3858e81843581b2F7)
+// ("USDT", 0xc2132D05D31c914a87C6611C10748AEb04B58e8F, 0x0A6513e40db6EB1b165753AD52E80663aeA50545)
+
+    modifier checkBoxID(uint24 boxId) {
       require(boxId < boxNumber, "Invalid BoxID parameter.");
       _;
    }
@@ -73,7 +78,7 @@ contract BoxProtocol is ERC1155, ERC1155Supply, PriceFeed {
         tokenPriceFeed[_tokenSymbol] = _tokenPriceFeed;
     }
 
-    function buy(uint boxId) external payable checkBoxID(boxId) returns(uint256 boxTokenMinted){
+    function buy(uint24 boxId) external payable checkBoxID(boxId) returns(uint256 boxTokenMinted){
         require(msg.value > 0, "msg.value is 0");
 
         uint256 tokenMintAmount = _getBoxTokenMintAmount(boxId, msg.value);
@@ -103,7 +108,7 @@ contract BoxProtocol is ERC1155, ERC1155Supply, PriceFeed {
         return(tokenMintAmount);
     }
 
-    function sell(uint boxId, uint256 tokenSellAmount) external checkBoxID(boxId) returns(uint) {
+    function sell(uint24 boxId, uint256 tokenSellAmount) external checkBoxID(boxId) returns(uint) {
 
         uint256 tokenTokenSupply = totalSupply(boxId);
         uint256 sellRatio = tokenSellAmount * 100 * 1000 / tokenTokenSupply;
@@ -146,6 +151,7 @@ contract BoxProtocol is ERC1155, ERC1155Supply, PriceFeed {
     function createBox(Token[] memory tokens) external onlyOwner returns(uint boxId){
         uint l = tokens.length;
         Token memory token;
+        uint8 percent;
 
         for(uint i = 0; i<l ; i++ ){
             if(keccak256(abi.encodePacked(tokens[i].name)) != keccak256(abi.encodePacked('MATIC'))){
@@ -153,22 +159,24 @@ contract BoxProtocol is ERC1155, ERC1155Supply, PriceFeed {
             }
             token.name = tokens[i].name;
             token.percentage = tokens[i].percentage;
+            percent += token.percentage;
             boxDistribution[boxNumber].push(token);
         }
         boxNumber++;
+        require(percent == 100, "percentage != 100");
         return(boxNumber - 1);
     }
     
 
-    function getNumberOfTokensInBox(uint boxId) public view checkBoxID(boxId) returns(uint){
+    function getNumberOfTokensInBox(uint24 boxId) public view checkBoxID(boxId) returns(uint){
         return(boxDistribution[boxId].length);
     }
 
-    function getBoxDistribution(uint boxId, uint tokenNumber) public view checkBoxID(boxId) returns(Token memory){
+    function getBoxDistribution(uint24 boxId, uint tokenNumber) public view checkBoxID(boxId) returns(Token memory){
         return (boxDistribution[boxId][tokenNumber]);
     }
 
-    function getBoxTVL(uint boxId) public view checkBoxID(boxId) returns(uint) {
+    function getBoxTVL(uint24 boxId) public view checkBoxID(boxId) returns(uint) {
         uint tokensInBox = getNumberOfTokensInBox(boxId);
         uint totalValueLocked;
         for(uint i = 0 ; i < tokensInBox ; i++){
@@ -182,16 +190,17 @@ contract BoxProtocol is ERC1155, ERC1155Supply, PriceFeed {
 
             }
             else {
+                uint8 decimal = ERC20I(tokenAddress[token.name]).decimals();
                 uint tokenAmount = boxBalance[boxId][tokenAddress[token.name]];
                 int256 tokenPrice = getLatestPrice(tokenPriceFeed[token.name]);
-                uint valueInUSD = tokenAmount* uint(tokenPrice)/(10**8);
-                totalValueLocked += valueInUSD;
+                uint valueInUSD = (tokenAmount * (10**(18 - decimal)) * uint(tokenPrice)) / (10**8);
+                totalValueLocked += valueInUSD ;
             }
         }
         return totalValueLocked;
     }
 
-    function getBoxTokenPrice(uint boxId) public view checkBoxID(boxId) returns(uint)  {
+    function getBoxTokenPrice(uint24 boxId) public view checkBoxID(boxId) returns(uint)  {
         uint totalValueLocked = getBoxTVL(boxId);
         uint tokenSupply = totalSupply(boxId);
         if(tokenSupply == 0){
@@ -201,7 +210,7 @@ contract BoxProtocol is ERC1155, ERC1155Supply, PriceFeed {
         }
     }
 
-    function _getBoxTokenMintAmount(uint boxId, uint amountInMATIC) internal view checkBoxID(boxId) returns(uint) {
+    function _getBoxTokenMintAmount(uint24 boxId, uint amountInMATIC) internal view checkBoxID(boxId) returns(uint) {
         int256 maticPrice = getLatestPrice(MATICPriceFeed);
         uint amountInUSD = amountInMATIC * uint(maticPrice)/(10**8);
         uint boxTokenPrice = getBoxTokenPrice(boxId);
