@@ -10,7 +10,7 @@ import '@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol';
 import '@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol';
 
 
-abstract contract WETHinterface {
+abstract contract WMATICinterface {
     function deposit() public virtual payable;
     function withdraw(uint wad) public virtual;
 }
@@ -22,7 +22,7 @@ contract BoxProtocol is ERC1155, ERC1155Supply, PriceFeed {
     event Sell(uint boxId, uint sellAmount, uint amountReceived);
 
     ISwapRouter public immutable swapRouter;
-    WETHinterface wethtoken;
+    WMATICinterface wmatictoken;
 
     uint24 public constant poolFee = 3000;
     uint8 constant DECIMAL = 2;
@@ -37,15 +37,15 @@ contract BoxProtocol is ERC1155, ERC1155Supply, PriceFeed {
     mapping(uint256 => mapping(address => uint256)) public boxBalance;
     mapping(string => address) tokenAddress;
     mapping(string => address) tokenPriceFeed;
-    address ETHPriceFeed;
+    address MATICPriceFeed;
     
 
     uint256 boxNumber;
 
-// createBox param [["ETH",50],["WETH",20],["UNI",30]]
-// createBox param [["WETH",20],["UNI",80]]
-// createBox param [["ETH",20],["WETH",80]]
-//addToken("WETH", 0x9c3C9283D3e44854697Cd22D3Faa240Cfb032889, ETHPriceFeed);
+// createBox param [["MATIC",50],["WMATIC",20],["UNI",30]]
+// createBox param [["WMATIC",20],["UNI",80]]
+// createBox param [["MATIC",20],["WMATIC",80]]
+//addToken("WMATIC", 0x9c3C9283D3e44854697Cd22D3Faa240Cfb032889, MATICPriceFeed);
 
     modifier checkBoxID(uint boxId) {
       require(boxId < boxNumber, "Invalid BoxID parameter.");
@@ -60,12 +60,12 @@ contract BoxProtocol is ERC1155, ERC1155Supply, PriceFeed {
     constructor() ERC1155(" ") PriceFeed()   {
         owner = msg.sender;
         swapRouter = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
-        ETHPriceFeed = 0xAB594600376Ec9fD91F8e885dADF0CE036862dE0;
+        MATICPriceFeed = 0xAB594600376Ec9fD91F8e885dADF0CE036862dE0;
 
-        addToken("ETH", address(0), ETHPriceFeed);
-        addToken("WETH", 0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270, ETHPriceFeed);
+        addToken("MATIC", address(0), MATICPriceFeed);
+        addToken("WMATIC", 0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270, MATICPriceFeed);
 
-        wethtoken = WETHinterface(tokenAddress["WETH"]);
+        wmatictoken = WMATICinterface(tokenAddress["WMATIC"]);
     }
 
     function addToken(string memory _tokenSymbol, address _tokenAddress, address _tokenPriceFeed) public onlyOwner {
@@ -82,19 +82,19 @@ contract BoxProtocol is ERC1155, ERC1155Supply, PriceFeed {
         for(uint i = 0 ; i < tokensInBox ; i++){
             Token memory token = boxDistribution[boxId][i];
 
-            if(keccak256(abi.encodePacked(token.name)) == keccak256(abi.encodePacked('ETH'))){
-                uint ethAmount = msg.value * token.percentage / 100;
-                boxBalance[boxId][tokenAddress[token.name]] += ethAmount;
+            if(keccak256(abi.encodePacked(token.name)) == keccak256(abi.encodePacked('MATIC'))){
+                uint maticAmount = msg.value * token.percentage / 100;
+                boxBalance[boxId][tokenAddress[token.name]] += maticAmount;
             }
-            else if(keccak256(abi.encodePacked(token.name)) == keccak256(abi.encodePacked('WETH'))){
+            else if(keccak256(abi.encodePacked(token.name)) == keccak256(abi.encodePacked('WMATIC'))){
                 uint tokenAmount = msg.value * token.percentage / 100;
-                wethtoken.deposit{value: tokenAmount}();
+                wmatictoken.deposit{value: tokenAmount}();
                 boxBalance[boxId][tokenAddress[token.name]] += tokenAmount;
             }
             else{
                 uint swapAmount = msg.value * token.percentage / 100;
-                wethtoken.deposit{value: swapAmount}();
-                uint tokenAmount = _swapTokens(swapAmount, tokenAddress["WETH"], tokenAddress[token.name]);
+                wmatictoken.deposit{value: swapAmount}();
+                uint tokenAmount = _swapTokens(swapAmount, tokenAddress["WMATIC"], tokenAddress[token.name]);
                 boxBalance[boxId][tokenAddress[token.name]] += tokenAmount;
             }
         }
@@ -112,26 +112,26 @@ contract BoxProtocol is ERC1155, ERC1155Supply, PriceFeed {
         uint256 amount;
         for(uint i = 0 ; i < tokensInBox ; i++){
             Token memory token = boxDistribution[boxId][i];
-            if(keccak256(abi.encodePacked(token.name)) == keccak256(abi.encodePacked('ETH'))){
-                uint ethAmount = boxBalance[boxId][tokenAddress[token.name]];
-                uint sellAmount = ethAmount * sellRatio / (100 * 1000);
+            if(keccak256(abi.encodePacked(token.name)) == keccak256(abi.encodePacked('MATIC'))){
+                uint maticAmount = boxBalance[boxId][tokenAddress[token.name]];
+                uint sellAmount = maticAmount * sellRatio / (100 * 1000);
                 boxBalance[boxId][tokenAddress[token.name]] -= sellAmount;
                 amount += sellAmount;
             }
-            else if(keccak256(abi.encodePacked(token.name)) == keccak256(abi.encodePacked('WETH'))){
-                uint wethAmount = boxBalance[boxId][tokenAddress[token.name]];
-                uint sellAmount = wethAmount * sellRatio / (100 * 1000);
+            else if(keccak256(abi.encodePacked(token.name)) == keccak256(abi.encodePacked('WMATIC'))){
+                uint wmaticAmount = boxBalance[boxId][tokenAddress[token.name]];
+                uint sellAmount = wmaticAmount * sellRatio / (100 * 1000);
                 boxBalance[boxId][tokenAddress[token.name]] -= sellAmount;
-                wethtoken.withdraw(sellAmount);
+                wmatictoken.withdraw(sellAmount);
                 amount += sellAmount;
             }
             else{
                 uint tokenAmount = boxBalance[boxId][tokenAddress[token.name]];
                 uint sellAmount = tokenAmount * sellRatio / (100 * 1000);
                 boxBalance[boxId][tokenAddress[token.name]] -= sellAmount;
-                uint wethAmount = _swapTokens(sellAmount, tokenAddress[token.name], tokenAddress["WETH"]);
-                wethtoken.withdraw(wethAmount);
-                amount += wethAmount;
+                uint wmaticAmount = _swapTokens(sellAmount, tokenAddress[token.name], tokenAddress["WMATIC"]);
+                wmatictoken.withdraw(wmaticAmount);
+                amount += wmaticAmount;
             }
         }
 
@@ -148,7 +148,7 @@ contract BoxProtocol is ERC1155, ERC1155Supply, PriceFeed {
         Token memory token;
 
         for(uint i = 0; i<l ; i++ ){
-            if(keccak256(abi.encodePacked(tokens[i].name)) != keccak256(abi.encodePacked('ETH'))){
+            if(keccak256(abi.encodePacked(tokens[i].name)) != keccak256(abi.encodePacked('MATIC'))){
             require(tokenAddress[tokens[i].name] != address(0), "Token not box compatible.");
             }
             token.name = tokens[i].name;
@@ -174,10 +174,10 @@ contract BoxProtocol is ERC1155, ERC1155Supply, PriceFeed {
         for(uint i = 0 ; i < tokensInBox ; i++){
             Token memory token = boxDistribution[boxId][i];
 
-            if((keccak256(abi.encodePacked(token.name)) == keccak256(abi.encodePacked('ETH'))) || (keccak256(abi.encodePacked(token.name)) == keccak256(abi.encodePacked('WETH')))){
-                uint ethAmount = boxBalance[boxId][tokenAddress[token.name]];
-                int256 ethPrice = getLatestPrice(ETHPriceFeed);
-                uint valueInUSD = ethAmount* uint(ethPrice)/(10**8);
+            if((keccak256(abi.encodePacked(token.name)) == keccak256(abi.encodePacked('MATIC'))) || (keccak256(abi.encodePacked(token.name)) == keccak256(abi.encodePacked('WMATIC')))){
+                uint maticAmount = boxBalance[boxId][tokenAddress[token.name]];
+                int256 maticPrice = getLatestPrice(MATICPriceFeed);
+                uint valueInUSD = maticAmount* uint(maticPrice)/(10**8);
                 totalValueLocked += valueInUSD;
 
             }
@@ -201,9 +201,9 @@ contract BoxProtocol is ERC1155, ERC1155Supply, PriceFeed {
         }
     }
 
-    function _getBoxTokenMintAmount(uint boxId, uint amountInETH) internal view checkBoxID(boxId) returns(uint) {
-        int256 ethPrice = getLatestPrice(ETHPriceFeed);
-        uint amountInUSD = amountInETH * uint(ethPrice)/(10**8);
+    function _getBoxTokenMintAmount(uint boxId, uint amountInMATIC) internal view checkBoxID(boxId) returns(uint) {
+        int256 maticPrice = getLatestPrice(MATICPriceFeed);
+        uint amountInUSD = amountInMATIC * uint(maticPrice)/(10**8);
         uint boxTokenPrice = getBoxTokenPrice(boxId);
         return(amountInUSD * (10**DECIMAL) / boxTokenPrice);
     }
