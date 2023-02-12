@@ -16,6 +16,7 @@ This is a smart contract for [Box Protocol](https://boxprotocol.netlify.app/) - 
 - `boxDistribution` : A mapping that stores token's box distribution for each box.
 - `boxBalance` : A mapping that stores the token balance for each box.
 - `tokenAddress` : A mapping that maps the token symbol to its corresponding address.
+- `whitelistedAddress` : A mapping that keeps track of addresses with admin privileges to the contract
 
 ## Constants
 
