@@ -196,7 +196,9 @@ contract BoxProtocol is ERC1155, ERC1155Supply, PriceFeed {
     }
 
     function getTokenPercentageSum(Token[] memory tokens)
-        returns (uint256 sum)
+        internal
+        pure
+        returns (uint256)
     {
         uint256 l = tokens.length;
         uint256 sum = 0;
