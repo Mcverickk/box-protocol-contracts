@@ -26,6 +26,7 @@ interface ERC20I {
 contract BoxProtocol is ERC1155, ERC1155Supply, PriceFeed {
     event Buy(uint256 boxId, uint256 buyAmount, uint256 boxTokenReceived);
     event Sell(uint256 boxId, uint256 sellAmount, uint256 amountReceived);
+    event BoxSwap(uint24 sellBoxId, uint256 sellTokenAmount, uint24 buyBoxId,uint256 buyTokenAmount);
 
     ISwapRouter public immutable swapRouter;
     WMATICinterface wmatictoken;
@@ -103,8 +104,15 @@ contract BoxProtocol is ERC1155, ERC1155Supply, PriceFeed {
         returns (uint256 boxTokenMinted)
     {
         require(msg.value > 0, "msg.value is 0");
+        uint256 amount = msg.value;
+        uint256 tokenMintAmount = _buy(boxId, amount);
+        emit Buy(boxId, amount, tokenMintAmount);
+        return (tokenMintAmount);
+    }
 
-        uint256 tokenMintAmount = _getBoxTokenMintAmount(boxId, msg.value);
+
+    function _buy(uint24 boxId, uint256 amount) internal returns(uint256){
+        uint256 tokenMintAmount = _getBoxTokenMintAmount(boxId, amount);
 
         uint256 tokensInBox = getNumberOfTokensInBox(boxId);
         for (uint256 i = 0; i < tokensInBox; i++) {
@@ -114,17 +122,17 @@ contract BoxProtocol is ERC1155, ERC1155Supply, PriceFeed {
                 keccak256(abi.encodePacked(token.name)) ==
                 keccak256(abi.encodePacked("MATIC"))
             ) {
-                uint256 maticAmount = (msg.value * token.percentage) / 100;
+                uint256 maticAmount = (amount * token.percentage) / 100;
                 boxBalance[boxId][tokenAddress[token.name]] += maticAmount;
             } else if (
                 keccak256(abi.encodePacked(token.name)) ==
                 keccak256(abi.encodePacked("WMATIC"))
             ) {
-                uint256 tokenAmount = (msg.value * token.percentage) / 100;
+                uint256 tokenAmount = (amount * token.percentage) / 100;
                 wmatictoken.deposit{value: tokenAmount}();
                 boxBalance[boxId][tokenAddress[token.name]] += tokenAmount;
             } else {
-                uint256 swapAmount = (msg.value * token.percentage) / 100;
+                uint256 swapAmount = (amount * token.percentage) / 100;
                 wmatictoken.deposit{value: swapAmount}();
                 uint256 tokenAmount = _swapTokens(
                     swapAmount,
@@ -135,13 +143,23 @@ contract BoxProtocol is ERC1155, ERC1155Supply, PriceFeed {
             }
         }
         _mint(msg.sender, boxId, tokenMintAmount, "");
-        emit Buy(boxId, msg.value, tokenMintAmount);
-        return (tokenMintAmount);
+        return(tokenMintAmount);
     }
 
     function sell(uint24 boxId, uint256 tokenSellAmount)
         external
         checkBoxID(boxId)
+        returns (uint256)
+    {
+        uint256 amount = _sell(boxId, tokenSellAmount);
+        (bool sent, ) = msg.sender.call{value: amount}("");
+        require(sent);
+        emit Sell(boxId, tokenSellAmount, amount);
+        return (amount);
+    }
+
+    function _sell(uint24 boxId, uint256 tokenSellAmount)
+        internal
         returns (uint256)
     {
         uint256 tokenTokenSupply = totalSupply(boxId);
@@ -187,12 +205,18 @@ contract BoxProtocol is ERC1155, ERC1155Supply, PriceFeed {
                 amount += wmaticAmount;
             }
         }
-
         _burn(msg.sender, boxId, tokenSellAmount);
-        (bool sent, ) = msg.sender.call{value: amount}("");
-        require(sent);
-        emit Sell(boxId, tokenSellAmount, amount);
-        return (amount);
+        return amount;
+        
+    }
+
+    function swapBox(uint24 sellBoxId, uint24 buyBoxId) external checkBoxID(sellBoxId) checkBoxID(buyBoxId) returns(uint256) {
+        uint256 sellAmount = balanceOf(msg.sender, sellBoxId);
+        uint256 sellEthReceived = _sell(sellBoxId, sellAmount);
+        uint256 buyBoxTokenAmount = _buy(buyBoxId, sellEthReceived);
+
+        emit BoxSwap(sellBoxId, sellAmount, buyBoxId, buyBoxTokenAmount);
+        return(buyBoxTokenAmount);
     }
 
     function getTokenPercentageSum(Token[] memory tokens)
